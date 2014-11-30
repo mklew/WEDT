@@ -1,0 +1,107 @@
+% Created 2013-11-12 Tue 20:00
+\documentclass[12pt, a4paper]{article}
+\usepackage{polski}
+\usepackage[utf8x]{inputenc}
+\usepackage[polish]{babel} 
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage[numbers]{natbib}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{listings}
+
+\lstdefinelanguage{scala}{
+  morekeywords={abstract,case,catch,class,def,%
+    do,else,extends,false,final,finally,%
+    for,if,implicit,import,match,mixin,%
+    new,null,object,override,package,%
+    private,protected,requires,return,sealed,%
+    super,this,throw,trait,true,try,%
+    type,val,var,while,with,yield},
+  otherkeywords={=>,<-,<\%,<:,>:,\#,@},
+  sensitive=true,
+  morecomment=[l]{//},
+  morecomment=[n]{/*}{*/},
+  morestring=[b]",
+  morestring=[b]',
+  morestring=[b]"""
+}
+
+\author{Marek Lewandowski, Marcin Król}
+\date{}
+\title{System skanujący opinie użytkowników na forum pod jakimś artykułem i określający zbiorczą opinię użytkowników \\ 
+        WEDT - Dokumentacja wstępna}
+\begin{document}
+
+\maketitle
+
+\section{Założenia}
+W projekcie przyjeliśmy następujące założenia:
+
+\begin{itemize}
+\item komentarze są wyświetlane statycznie, czyli nie potrzebny jest javascript do obejrzenia komentarzy
+\item ilość komentarzy powinna wynosić co najmniej $N$, gdzie $N$ określimy empirycznie
+\item komentarz powinien posiadać co najmniej $W$, gdzie $W$ określimy empirycznie
+\end{itemize}
+
+\section{System}
+
+System można podzielić na dwa moduły:
+\begin{itemize}
+\item Crawler  - zajmuje się wydobyciem komentarzy ze strony i poszukiwaniem następnych stron
+\item Sentiment Analyzer - określa sentyment komentarza
+\end{itemize}
+
+\subsection{Crawler}
+
+\subsubsection{Metoda wydobycia komentarzy}
+\begin{enumerate}
+\item Zaczynamy od wyszukania powtarzających się na stronie elementów spełniających określone kryteria np.: id albo klasa elementu zawiera słowo komentarz. Przyjmujemy, że znalezione elementy to komentarze.
+\item Dla każdego elementu przeszukujemy jego strukturę szukając podelementu zawierającego treść z co najmniej $W$ słowami.
+\item Wynikiem są znalezione treści komentarzy
+\end{enumerate}
+
+\subsubsection{Metoda paginacji}
+Paginacja opiera się na metodzie słów kluczowych. Szukać będziemy elementów typu $<a></a>$ które zawierają takie słowa jak: “Dalej”, “Następna” itp.
+
+\subsection{Sentiment Analyzer}
+
+\subsubsection{Metoda analizy sentymentu}
+
+opis metody z wysokiego poziomu:
+\begin{enumerate}
+\item LanguageTool do korekcji treści
+\item Stemizacja
+\item Zliczanie stemów pozytywnych i negatywnych na podstawie słownika słów pozytywnych i negatywnych
+\item Określenie sentymentu na podstawie stosunku liczby słów pozytywnych i negatywnych
+\item Określenie istotności
+\end{enumerate}
+
+\subsubsection{LangagueTool}
+Komentarze często zawierają błędy typu literówki, zła gramatyka. Użycie takich słów do dalszej analizy może być problematyczne, ponieważ słowniki zawierają słowa zapisane w sposób poprawny. LanguageTool skoryguje treść komentarza i taka poprawiona treść będzie użyta dalej.
+
+\subsubsection{Stemizacja}
+Język polski jest językiem fleksyjnym. Słowniki słów pozytywnych i negatywnych nie zawierają wszystkich słów we wszystkich formach. W związku z tym poprzez używanie jedynie stemów mamy większą szansę, na zakwalifikowanie danego słowa do pozytywnych lub negatywnych.
+
+\subsubsection{Zliczanie stemów}
+
+Korzystając z dwóch wcześniej przygotowanych słowników: słownika słów pozytywnych oraz negatywnych sprawdzamy czy dane słowo należy do jednego lub drugiego słownika. Jeśli należy to jest kwalifikowane jako pozytywne lub negatywne. W przeciwnym przypadku pozostaje jako neutralne. 
+
+Jako, że korzystamy ze stemów słów słowniki również zostaną poddane stemizacji.
+
+\subsubsection{Określenie sentymentu}
+
+Posiadając słowa określone jako pozytywne, negatywne i neutralne możemy określić zabarwienie sentymentu danego komentarza. Skorzystamy tutaj z formuły, którą określimy empirycznie. Wejściem formuły będą 3 zmienne, a wyjściem wartość z zakresu $(-1;1)$ określająca zabarwienie sentymentu.
+
+\subsubsection{Określenie istotności}
+
+Istotność określimy na podstawie ilości słów w komentarzu. Dłuższy komentarz uznamy za bardziej istotny.
+
+
+% \nocite{*}
+% \bibliographystyle{plainnat}
+% \bibliography{bibliography}
+\end{document}
