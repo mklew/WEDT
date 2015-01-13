@@ -46,4 +46,10 @@ trait SampleData {
     RawWebsite(url, body)
   }
 
+  lazy val cokupic: RawWebsite = {
+    val body = readFileAsString("/cokupic.html")
+    val url = "http://cokupic.pl/produkt/Lark-FreeBird-35AT-35-LarkMap-Polska"
+    RawWebsite(url, body)
+  }
+
 }

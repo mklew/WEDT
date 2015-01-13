@@ -70,7 +70,7 @@ object UrlToBaseUrl {
 object NextPageFinder {
 
   val langToKeyWords = Map(
-    SupportedLanguages.PL -> Seq("następna", "nastepny", "nastepna"),
+    SupportedLanguages.PL -> Seq("następna", "nastepny", "nastepna", "dalej", "przejdź"),
     SupportedLanguages.EN -> Seq("next")
   )
 

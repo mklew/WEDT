@@ -28,7 +28,7 @@ class NextPageFinderSpec extends FlatSpec with Matchers with SampleData {
   }
 
 
-  val testDataWithNames = List(ceneo -> "Ceneo", opineo -> "Opineo", gastronauci -> "Gastronauci", dummy -> "Syntetic", dummyRelative -> "Syntetic relative")
+  val testDataWithNames = List(ceneo -> "Ceneo", opineo -> "Opineo", gastronauci -> "Gastronauci", dummy -> "Syntetic", dummyRelative -> "Syntetic relative", cokupic -> "CoKupić")
 
 //  it should "filter links to only those pointing to same url" in {
 //    fail()
