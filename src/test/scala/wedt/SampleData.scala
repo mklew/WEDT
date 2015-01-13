@@ -16,6 +16,12 @@ trait SampleData {
     RawWebsite(url, body)
   }
 
+  lazy val dummy: RawWebsite = {
+    val body = readFileAsString("/syntetic.html")
+    val url = "http://thaturl.pl/12345"
+    RawWebsite(url, body)
+  }
+
   lazy val ceneo: RawWebsite = {
     val body = readFileAsString("/ceneo.html")
     val url = "http://www.ceneo.pl/17664350"
