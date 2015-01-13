@@ -5,9 +5,8 @@ import java.util.Locale
 
 import com.typesafe.scalalogging.slf4j.StrictLogging
 import org.jsoup.Jsoup
-import org.jsoup.select.Elements
 
-import scala.collection.mutable
+import scala.annotation.tailrec
 import scala.util.{Failure, Success, Try}
 import org.jsoup.nodes.{Element, Document}
 import scala.collection.JavaConversions._
@@ -47,6 +46,16 @@ object WebsiteToXml extends StrictLogging {
       }
     }
   }
+
+  def toJsoupDoc(rawHtml: String): Either[String, Document] = {
+    Try(Jsoup.parse(rawHtml)) match {
+      case Success(doc) => Right(doc)
+      case Failure(err) => {
+        logger.error("Failed to transform website to Jsoup document", err)
+        Left(err.getMessage)
+      }
+    }
+  }
 }
 
 object UrlToBaseUrl {
@@ -67,6 +76,127 @@ object UrlToBaseUrl {
   }
 }
 
+object ReviewsFinder {
+
+  case class Review(review: String)
+
+  type Reviews = Seq[Review]
+
+  case class ReviewParams(minimumReviews: Int, minimumWordsInReview: Int)
+
+  // TODO more keywords
+  val anyAttributeValues = Seq("review", "opinion", "comment", "author", "rating", "komentarz", "ocena", "autor", "opinia", "recenzja")
+
+  def findAll(root: Element, predicate: Element => Boolean): Seq[Element] = {
+    val results = for {
+        child <- root.children().toIndexedSeq
+    } yield {
+      if(predicate(child)) Seq(child) else findAll(child, predicate)
+    }
+    results.flatten.toSeq
+  }
+
+  def anyAttributeContainAnyValue(values: Seq[String])(e: Element): Boolean = {
+    e.attributes().exists(a => {
+      val attrVal = a.getValue.toLowerCase(Locale.ENGLISH)
+      values.exists(contain => attrVal.contains(contain))
+    })
+  }
+
+  def parentsUntilBody(e: Element): Seq[Element] = {
+    e.parents().takeWhile(_.tagName() != "body")
+  }
+
+  protected[crawler] def toElementWithParents(e: Element): ElementWithParents = ElementWithParents(e, parentsUntilBody(e))
+
+  case class ElementWithParents(e: Element, parents: Seq[Element])
+
+  protected[crawler] def onlyDisjointElements(seq: Seq[ElementWithParents]): Seq[ElementWithParents] = {
+
+    def addToDisjoint(disjoint: Seq[ElementWithParents], rest: Seq[ElementWithParents]): Seq[ElementWithParents] = {
+      rest headOption match {
+        case Some(e) => if(disjoint.exists(dis => elementContainOther(dis, e))) addToDisjoint(disjoint, rest.tail) else addToDisjoint(Seq(e) ++ disjoint, rest.tail)
+        case None => disjoint
+      }
+    }
+
+    val sortedByNumberOfParents = seq.sortBy(_.parents.size)
+
+    if(sortedByNumberOfParents.nonEmpty) {
+      val first = sortedByNumberOfParents.head
+      val minimumNumberOfParents = first.parents.size
+
+      val disjointElements = seq.takeWhile(_.parents.size == minimumNumberOfParents)
+      val restOfElements = seq.dropWhile(_.parents.size == minimumNumberOfParents)
+      addToDisjoint(disjointElements, restOfElements)
+    }
+    else Seq()
+  }
+
+  def elementContainOther(ep: ElementWithParents, other: ElementWithParents): Boolean = {
+    other.parents.contains(ep.e)
+  }
+
+  protected[crawler] def findBody(htmlDoc: Document): Element = htmlDoc.select("body").first()
+
+  protected[crawler] def findAllWithKeyWords(root: Element) = findAll(root, anyAttributeContainAnyValue(anyAttributeValues))
+
+  protected[crawler] def findDisjointElements(htmlDoc: Document) = {
+    val body = findBody(htmlDoc)
+    val elementsThatContainSomeAttributes = findAllWithKeyWords(body)
+    val withParents = elementsThatContainSomeAttributes.map(toElementWithParents)
+    onlyDisjointElements(withParents)
+  }
+
+  protected[crawler] def groupDisjoint(disjointElements: Seq[ElementWithParents]) = disjointElements.groupBy(_.parents).values.toSeq
+
+
+  /**
+   * Algorithm.
+   *    1. Find elements that have some attributes which contain values like "review", "opinion", "comment", "author", "rating"
+   *    2. For each element, generate list of parents up to BODY
+   *    3.
+   *
+   *
+   * @param htmlDoc
+   * @param lang
+   * @param params
+   * @return
+   */
+  def findReviews(htmlDoc: Document, lang: SupportedLanguages.Lang, params: ReviewParams): Reviews = {
+    val disjointElements = findDisjointElements(htmlDoc)
+    val reviewsGroups = groupDisjoint(disjointElements).map(s => s.map(_.e))
+
+    val groupsWithComments = for {
+      reviewGroup <- reviewsGroups
+    } yield {
+      val groupWithComments = reviewGroup.map(elementInGroup => {
+        val allParagraphs = elementInGroup.select("p").toIndexedSeq
+        val onlyLowestLevelDivs = elementInGroup.select("div").filter(div => {
+          !div.children().exists(_.tagName() == "div")
+        }).toSeq
+
+        val allPotentialCommentNodes = allParagraphs ++ onlyLowestLevelDivs
+
+        val comments = allPotentialCommentNodes.map(_.text()).filter(text => text.split(" ").size >= params.minimumWordsInReview)
+        comments
+      })
+
+      val commentsInThatGroup = groupWithComments.flatten
+
+      commentsInThatGroup
+    }
+
+    val onlyGroupsWithMinimumOfReviews = groupsWithComments.filter(_.size >= params.minimumReviews)
+
+    // TODO można albo wszystkie grupy złączyć, albo wziąć tą z największą ilością komentarzy. Chyba lepiej jak się weźmie tą z najwyższą ilościa komentarzy, to będzie większy precision
+    val finalReviews = onlyGroupsWithMinimumOfReviews.maxBy(_.size)
+
+    finalReviews.map(Review)
+  }
+
+}
+
 object NextPageFinder {
 
   val langToKeyWords = Map(
@@ -76,8 +206,6 @@ object NextPageFinder {
 
   val attributesToCheckForKeywords = List("title", "alt")
   val cssClasses = Seq("next", "next_page", "pagination")
-
-  // TODO trzeba szukać jeszcez po atrybutach alt i title
 
   /**
    * Unfortunately html is rarely valid xml so we will be working with raw strings

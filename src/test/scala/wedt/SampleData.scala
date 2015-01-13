@@ -52,4 +52,6 @@ trait SampleData {
     RawWebsite(url, body)
   }
 
+  lazy val dummyDisjointHtml = readFileAsString("/disjoint-elements.html")
+
 }
