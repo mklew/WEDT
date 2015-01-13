@@ -37,3 +37,13 @@ doc.run.xml
 .idea/*
 .idea_modules/*
 graphs/*
+*.bat
+*.cmd
+/*.json
+/.idea
+/.idea_modules
+logs
+project/project
+project/target
+target
+project.iml
