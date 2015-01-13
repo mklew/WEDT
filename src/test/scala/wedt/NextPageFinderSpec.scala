@@ -30,18 +30,6 @@ class NextPageFinderSpec extends FlatSpec with Matchers with SampleData {
 
   val testDataWithNames = List(ceneo -> "Ceneo", opineo -> "Opineo", gastronauci -> "Gastronauci", dummy -> "Syntetic", dummyRelative -> "Syntetic relative", cokupic -> "CoKupić")
 
-//  it should "filter links to only those pointing to same url" in {
-//    fail()
-//  }
-//
-//  it should "filter links to only those containing key words" in {
-//    fail()
-//  }
-//
-//  it should "find links with keywords in it" in {
-//    fail()
-//  }
-
   def potentialNextPageLinks(rawWebsite: RawWebsite, lang: SupportedLanguages.Value) = {
     val doc = toJsoupDoc(rawWebsite.html, rawWebsite.baseUrl).right.get
     findPotentialNextPageLinks(doc, rawWebsite.baseUrl, rawWebsite.url, lang)

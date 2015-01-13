@@ -157,12 +157,34 @@ object NextPageFinder {
     })
   }
 
+  /**
+   *
+   * Algorithm:
+   *  Find all elements <a> which have attribute 'href' present.
+   *  Filter them by 'href' that only points to same base url (removes links to other websites)
+   *
+   *  Then links are filtered using several techniques and results are merged together
+   *
+   *  1. Anchors which text contain some keyword. Keywords are specified for appropriate language
+   *  2. Anchors which have attribute rel="next" - this is quite commonly used for pagination
+   *  3. Anchors which have class attribute with specific css classes
+   *
+   *  Results are merged together to only unique results. Uniqueness is based on "href" attribute.
+   *
+   *  Unique results are sorted by longest prefix to given URL. for example
+   *  if analysis for page http://www.somepage.com/products/ABC123 was requested, then link http://www.somepage.com/products/ABC123?page=2 has longer prefix than link
+   *  http://www.somepage.com/contact-us
+   *
+   *  Relative urls are also supported.
+   *
+   *
+   * @param htmlDoc - jsoup document
+   * @param baseUrl - base url derived from requested URL
+   * @param url - request URL for analysis
+   * @param params - language specific parameters
+   * @return
+   */
   def findLinksAlgorithm(htmlDoc: Document, baseUrl: String, url: String, params: LinkFindingParameters): Seq[Element] = {
-    /*
-    Link finding:
-    1. try with rel next
-    2. fallback to all links filtered by keywords in their text
-     */
     val allLinks = findAllLinks(htmlDoc).filter(filterToOnlyThoseWithBaseUrl(baseUrl))
     val withRelNext = findLinksWithRelNext(htmlDoc).filter(filterToOnlyThoseWithBaseUrl(baseUrl))
     val containingKeywords = filerByKeywords(params, allLinks)
