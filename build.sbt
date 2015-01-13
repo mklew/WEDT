@@ -1,3 +1,11 @@
+import AssemblyKeys._
+
+assemblySettings
+
+test in assembly := {}
+
+mainClass in assembly := Some("wedt.Boot")
+
 name := "sentiment-analyzer"
 
 val sprayV = "1.3.2"
@@ -30,7 +38,8 @@ libraryDependencies ++= Seq(
   "org.slf4j"                   % "slf4j-api"              % "1.7.7",
   "com.typesafe"                % "config"                 % "1.2.1",
   "org.scala-lang.modules"     %% "scala-xml"              % "1.0.2",
-  "net.ceedubs"                %% "ficus"                  % "1.1.1"
+  "net.ceedubs"                %% "ficus"                  % "1.1.1",
+  "org.scalaz"                 %% "scalaz-core"            % "7.1.0"
 )
 
 fork := true

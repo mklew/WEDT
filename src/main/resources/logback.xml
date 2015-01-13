@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <property name="pattern" value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%-20t] [%-35c{1}] %msg%n"/>
+  <property name="logDir" value="logs"/>
+
+  <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>${pattern}</pattern>
+    </encoder>
+  </appender>
+  <appender name="file" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <File>${logDir}/debug.log</File>
+    <Append>true</Append>
+    <encoder>
+      <pattern>${pattern}</pattern>
+    </encoder>
+    <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
+      <maxIndex>10</maxIndex>
+      <FileNamePattern>${logDir}/debug.log.%i.zip</FileNamePattern>
+    </rollingPolicy>
+    <triggeringPolicy class="ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy">
+      <MaxFileSize>10240KB</MaxFileSize>
+    </triggeringPolicy>
+  </appender>
+
+  <logger name="pl" level="DEBUG"/>
+  <logger name="pl.rankomat.wsservices" level="DEBUG"/>
+  <logger name="akka" level="DEBUG"/>
+  <logger name="spray" level="DEBUG"/>
+  <logger name="scalaxb" level="DEBUG"/>
+
+  <root level="DEBUG">
+    <appender-ref ref="file"/>
+  </root>
+</configuration>
