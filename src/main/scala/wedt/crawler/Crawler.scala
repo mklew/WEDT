@@ -1,6 +1,7 @@
 package wedt.crawler
 
 import java.net.URL
+import java.util.Locale
 
 import com.typesafe.scalalogging.slf4j.StrictLogging
 import org.jsoup.Jsoup
@@ -69,11 +70,14 @@ object UrlToBaseUrl {
 object NextPageFinder {
 
   val langToKeyWords = Map(
-    SupportedLanguages.PL -> List("następna", "nastepny", "nastepna"),
-    SupportedLanguages.EN -> List("next")
+    SupportedLanguages.PL -> Seq("następna", "nastepny", "nastepna"),
+    SupportedLanguages.EN -> Seq("next")
   )
 
-  val cssClasses = List("next", "next_page")
+  val attributesToCheckForKeywords = List("title", "alt")
+  val cssClasses = Seq("next", "next_page", "pagination")
+
+  // TODO trzeba szukać jeszcez po atrybutach alt i title
 
   /**
    * Unfortunately html is rarely valid xml so we will be working with raw strings
@@ -83,12 +87,12 @@ object NextPageFinder {
     htmlDoc.select("a").filter(_.hasAttr("href"))
   }
 
-  def findLinksWithRelNext(htmlDoc: Document): Elements = {
-    htmlDoc.select("""a[rel="next"]""")
+  def findLinksWithRelNext(htmlDoc: Document): Seq[Element] = {
+    htmlDoc.select("""a[rel="next"]""").filter(_.hasAttr("href"))
   }
 
-  def findLinksWhichMatchAttributesAndValues(htmlDoc: Document, attr: String, value: String): Elements = {
-    htmlDoc.select(s"""a[$attr~="$value"]""")
+  def findLinksWhichMatchAttributesAndValues(htmlDoc: Document, attr: String, value: String): Seq[Element] = {
+    htmlDoc.select(s"""a[$attr~="$value"]""").filter(_.hasAttr("href"))
   }
 
   private def isRelative(href: String) = href.startsWith("/")
@@ -131,29 +135,56 @@ object NextPageFinder {
     elements.map(e => e -> longestPrefix(baseUrl, url)(e)).toSeq.sortBy(_._2.length).reverse.map(_._1)
   }
 
-  def findLinksAlgorithm(htmlDoc: Document, baseUrl: String, keywords: List[String]): Seq[Element] = {
+  case class LinkFindingParameters(locale: Locale, keywords: Seq[String])
+
+  def findPotentialNextPageLinks(htmlDoc: Document, baseUrl: String, url: String, lang: SupportedLanguages.Value): Seq[Element] = {
+    val params = lang match {
+      case SupportedLanguages.PL => LinkFindingParameters(new java.util.Locale("pl_PL"), langToKeyWords(lang))
+      case SupportedLanguages.EN => LinkFindingParameters(Locale.ENGLISH, langToKeyWords(lang))
+    }
+
+    findLinksAlgorithm(htmlDoc, baseUrl, url, params)
+  }
+
+  private def attributeContain(attr: String, contain: String)(e: Element) = e.hasAttr(attr) && e.attr(attr).contains(contain)
+
+  private def filterByAttributesThatContainAny(attr: String, values: Seq[String])(e: Element) = values.map(v => attributeContain(attr,v)(e)).exists(x=>x)
+
+  private def filerByKeywords(params: LinkFindingParameters, elems: Seq[Element]): Seq[Element] = {
+    elems.filter(element => {
+      val text = element.text().toLowerCase(params.locale)
+      params.keywords.exists(keyword => text.contains(keyword))
+    })
+  }
+
+  def findLinksAlgorithm(htmlDoc: Document, baseUrl: String, url: String, params: LinkFindingParameters): Seq[Element] = {
     /*
     Link finding:
     1. try with rel next
     2. fallback to all links filtered by keywords in their text
      */
+    val allLinks = findAllLinks(htmlDoc).filter(filterToOnlyThoseWithBaseUrl(baseUrl))
+    val withRelNext = findLinksWithRelNext(htmlDoc).filter(filterToOnlyThoseWithBaseUrl(baseUrl))
+    val containingKeywords = filerByKeywords(params, allLinks)
 
-    val allLinks = htmlDoc.select("a")
-    val withRelNext = findLinksWithRelNext(htmlDoc)
+    val attrHasKeywords = {for {
+      attrToCheck <- attributesToCheckForKeywords
+    } yield {
+      allLinks.filter(filterByAttributesThatContainAny(attrToCheck, params.keywords))
+    }}.flatten.toSeq
 
-    val linksForFurtherFiltering = if(withRelNext.nonEmpty) {
-      withRelNext
-    }
-    else {
-      allLinks
-    }
+    val withCssClasses = allLinks.filter(filterByAttributesThatContainAny("class", cssClasses))
 
-    linksForFurtherFiltering.filter(filterToOnlyThoseWithBaseUrl(baseUrl))
+    val allCandidates = Seq(withRelNext, containingKeywords, attrHasKeywords, withCssClasses).flatten
+
+    val uniqueCandidates = allCandidates.map(candidate => candidate.attr("href") -> candidate ).toMap.values.toSeq
+
+    orderByLongestPrefix(baseUrl, url)(uniqueCandidates)
   }
 
-  implicit def toElements(buff: mutable.Buffer[Element]): Elements = new Elements(buff)
+//  implicit def toElements(buff: mutable.Buffer[Element]): Elements = new Elements(buff)
   //implicit def toElementsSeq(buff: Seq[Element]): Elements = new Elements(buff)
-  implicit def toElementsList(buff: List[Element]): Elements = new Elements(buff)
+//  implicit def toElementsList(buff: List[Element]): Elements = new Elements(buff)
 
 }
 

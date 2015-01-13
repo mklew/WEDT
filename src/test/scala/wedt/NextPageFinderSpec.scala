@@ -1,9 +1,13 @@
 package wedt
 
+import org.jsoup.nodes.Element
 import org.scalatest.FlatSpec
 import org.scalatest.Matchers
+import wedt.crawler.SupportedLanguages
 import wedt.crawler.WebsiteToXml._
+import wedt.ws.RawWebsite
 import scala.collection.JavaConversions._
+import org.scalatest.OptionValues._
 
 /**
  * @author Marek Lewandowski <marek.lewandowski@semantive.com>
@@ -23,6 +27,9 @@ class NextPageFinderSpec extends FlatSpec with Matchers with SampleData {
     allLinks should have size 7
   }
 
+
+  val testDataWithNames = List(ceneo -> "Ceneo", opineo -> "Opineo", gastronauci -> "Gastronauci", dummy -> "Syntetic", dummyRelative -> "Syntetic relative")
+
 //  it should "filter links to only those pointing to same url" in {
 //    fail()
 //  }
@@ -34,6 +41,37 @@ class NextPageFinderSpec extends FlatSpec with Matchers with SampleData {
 //  it should "find links with keywords in it" in {
 //    fail()
 //  }
+
+  def potentialNextPageLinks(rawWebsite: RawWebsite, lang: SupportedLanguages.Value) = {
+    val doc = toJsoupDoc(rawWebsite.html, rawWebsite.baseUrl).right.get
+    findPotentialNextPageLinks(doc, rawWebsite.baseUrl, rawWebsite.url, lang)
+  }
+
+  def expectedLinkShouldBeFirst(potentialLinks: Seq[Element]) = {
+    val value: Element = potentialLinks.headOption.value
+    for {
+      link <- potentialLinks
+    } println(link)
+    println(value.attr("href"))
+    value.hasAttr("expected-next-page-link") shouldBe true
+  }
+
+  def shouldContainExpectedLink(potentialLinks: Seq[Element]) = {
+    potentialLinks.exists(_.hasAttr("expected-next-page-link")) shouldBe true
+  }
+
+  for {
+    testData <- testDataWithNames
+  } {
+    val potentialLinks = potentialNextPageLinks(testData._1, SupportedLanguages.PL)
+
+    it should s"find potential links for ${testData._2}" in {
+      shouldContainExpectedLink(potentialLinks)
+    }
+    it should s"have it as first link for ${testData._2}" in {
+      expectedLinkShouldBeFirst(potentialLinks)
+    }
+  }
 
   it should "order links by their longest prefix" in {
     val doc = toJsoupDoc(dummy.html, dummy.baseUrl).right.get
