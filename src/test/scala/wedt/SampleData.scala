@@ -18,7 +18,13 @@ trait SampleData {
 
   lazy val dummy: RawWebsite = {
     val body = readFileAsString("/syntetic.html")
-    val url = "http://thaturl.pl/12345"
+    val url = "http://thaturl.pl/review/12345"
+    RawWebsite(url, body)
+  }
+
+  lazy val dummyRelative: RawWebsite = {
+    val body = readFileAsString("/syntetic-relative.html")
+    val url = "http://thaturl.pl/review/12345"
     RawWebsite(url, body)
   }
 

@@ -30,7 +30,9 @@ object JsonImplicits extends DefaultJsonProtocol {
   implicit val impAnalyzeResponse = jsonFormat2(AnalyzeResponse)
 }
 
-case class RawWebsite(url: String, html: String)
+case class RawWebsite(url: String, html: String) {
+  lazy val baseUrl = wedt.crawler.UrlToBaseUrl.toBaseUrl(url)
+}
 
 case class AnalyzeRequest(url: String)
 

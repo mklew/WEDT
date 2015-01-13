@@ -12,20 +12,16 @@ class SampleDataSpec extends FlatSpec with Matchers with SampleData {
 
   import wedt.crawler.WebsiteToXml._
 
-  "Dummy sample" should "be valid xml" in {
-    toXml(dummy.html) shouldBe 'right
-  }
-
-  it should "be jsoup document" in {
+  "Dummy sample"  should "be jsoup document" in {
     val doc: Document = Jsoup.parse(dummy.html, dummy.url)
   }
 
   "Amazon sample" should "be valid jsoup document" in {
-    val doc: Document = Jsoup.parse(amazon.html, amazon.url)
+    toJsoupDoc(amazon.html, amazon.url)
   }
 
   "Gastronauci sample" should "be valid jsoup document" in  {
-    val doc: Document = Jsoup.parse(gastronauci.html, gastronauci.url)
+    val doc: Document = toJsoupDoc(gastronauci.html, gastronauci.url).right.get
 
     val r = doc.select("a")
 
@@ -33,14 +29,14 @@ class SampleDataSpec extends FlatSpec with Matchers with SampleData {
   }
 
   "Ceneo sample" should "be valid jsoup document" in  {
-    val doc: Document = Jsoup.parse(ceneo.html, ceneo.url)
+    val doc: Document = toJsoupDoc(ceneo.html, ceneo.url).right.get
     val r = doc.select("a")
 
     r.size() should be > 0
   }
 
   "Opineo sample" should "be valid jsoup document" in  {
-    val doc: Document = Jsoup.parse(opineo.html, opineo.url)
+    val doc: Document = toJsoupDoc(opineo.html, opineo.url).right.get
     val r = doc.select("a")
 
     r.size() should be > 0
