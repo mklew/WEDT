@@ -36,54 +36,6 @@ class ReviewsFinderSpec extends FlatSpec with Matchers with SampleData {
     reviewsGroups should have size 2
   }
 
-  it should "work for Ceneo" in {
-    val doc = toJsoupDoc(gastronauci.html, gastronauci.baseUrl).right.get
-    val minimumWordsInComment = 10
-
-    val disjointElements = findDisjointElements(doc)
-    val reviewsGroups = groupDisjoint(disjointElements).map(g => g.map(_.e))
-
-    println("Number of review groups "  + reviewsGroups.size)
-
-    for {
-      reviewGroup <- reviewsGroups
-    } {
-      println(s"size of group ${reviewGroup.size}")
-
-      println(reviewGroup)
-      println("###################################")
-    }
-
-    val groupsWithComments = for {
-      reviewGroup <- reviewsGroups
-    } yield {
-      val groupWithComments = reviewGroup.map(elementInGroup => {
-        val allParagraphs = elementInGroup.select("p").toIndexedSeq
-        val onlyLowestLevelDivs = elementInGroup.select("div").filter(div => {
-          !div.children().exists(_.tagName() == "div")
-        }).toSeq
-
-        val allPotentialCommentNodes = allParagraphs ++ onlyLowestLevelDivs
-
-        val comments = allPotentialCommentNodes.map(_.text()).filter(text => text.split(" ").size >= minimumWordsInComment)
-        comments
-      })
-
-//      println("###################################")
-//      println("## COMMENTS                      ##")
-//      println("###################################")
-//      val total = groupWithComments.map(_.size).reduce(_ + _)
-//      println("total size " + total )
-//
-//      println(groupWithComments)
-//
-//      println("###################################")
-//      println("## END OF COMMENTS               ##")
-//      println("###################################")
-//      groupWithComments
-    }
-  }
-
   def checkReviews(name: String, html: String, baseUrl: String)(expectedReviewsStartWith: List[String]) = {
     val doc = toJsoupDoc(html, baseUrl).right.get
     val reviews = findReviews(doc, SupportedLanguages.PL, ReviewParams(minimumReviews = 3, minimumWordsInReview = 10))
