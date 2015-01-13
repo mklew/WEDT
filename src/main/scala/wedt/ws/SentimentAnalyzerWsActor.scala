@@ -5,6 +5,7 @@ import spray.http.{MediaTypes, StatusCodes}
 import spray.json.DefaultJsonProtocol
 import spray.routing._
 import wedt.conf.Config
+import wedt.crawler.SupportedLanguages
 import wedt.di.WedtModule
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -29,7 +30,11 @@ object JsonImplicits extends DefaultJsonProtocol {
   implicit val impAnalyzeResponse = jsonFormat2(AnalyzeResponse)
 }
 
+case class RawWebsite(url: String, html: String)
+
 case class AnalyzeRequest(url: String)
+
+case class Analysis(request: AnalyzeRequest, lang: SupportedLanguages.Value)
 
 case class Post(text: String, sentiment: Double, relevance: Double)
 
@@ -42,29 +47,32 @@ trait SentimentAnalyzerWs extends HttpService {
   import spray.httpx.SprayJsonSupport.{sprayJsonMarshaller, sprayJsonUnmarshaller}
   import wedt.ws.JsonImplicits._
 
+  val queryHandler: (Analysis) => Future[Either[String, AnalyzeResponse]] = ???
+
   val queryRoute: Route = path(Config.restApi.context / Config.restApi.queryPath) {
     post {
       entity(as[AnalyzeRequest]) { raw =>
-        onComplete(queryHandler(raw)) { response => {
-          response match {
-            case Success(either) => either match {
-              case Left(error) => respondWithStatus(StatusCodes.BadRequest) { ctx =>
-                ctx.complete(s"An error occurred: ${error}")
+        anyParam('lang)(lang => {
+          val chosenLanguage = SupportedLanguages.withName(lang)
+          onComplete(queryHandler(Analysis(raw, chosenLanguage))) { response => {
+            response match {
+              case Success(either) => either match {
+                case Left(error) => respondWithStatus(StatusCodes.BadRequest) { ctx =>
+                  ctx.complete(s"An error occurred: ${error}")
+                }
+                case Right(res) => respondWithMediaType(MediaTypes.`application/json`) { ctx =>
+                  ctx.complete(res)
+                }
               }
-              case Right(response) => respondWithMediaType(MediaTypes.`application/json`) { ctx =>
-                ctx.complete(response)
+              case Failure(ex) => respondWithStatus(StatusCodes.BadRequest) { ctx =>
+                ctx.complete(s"An error occurred: ${ex.getMessage}")
               }
-            }
-            case Failure(ex) => respondWithStatus(StatusCodes.BadRequest) { ctx =>
-              ctx.complete(s"An error occurred: ${ex.getMessage}")
             }
           }
-        }
-        }
+          }
+        })
       }
     }
   }
 
-
-  val queryHandler: (AnalyzeRequest) => Future[Either[String, AnalyzeResponse]] = ???
 }

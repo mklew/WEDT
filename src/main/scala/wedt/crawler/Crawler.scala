@@ -7,3 +7,8 @@ package wedt.crawler
 object Crawler {
 
 }
+
+object SupportedLanguages extends Enumeration {
+  type Lang = Value
+  val PL, EN = Value
+}
