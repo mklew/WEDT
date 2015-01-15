@@ -17,9 +17,11 @@ object Config extends StrictLogging {
   }
 
   object crawler {
-    val minimumPosts = cf.as[String]("crawler.minimum-posts")
+    val minimumPosts = cf.as[Int]("crawler.minimum-posts")
 
-    val minimumWords = cf.as[String]("minimum-words")
+    val minimumWords = cf.as[Int]("crawler.minimum-words")
+
+    val pagesToAnalyze = cf.as[Int]("crawler.pages-to-analyze")
   }
 
   object network {

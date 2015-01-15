@@ -32,7 +32,14 @@ object SentimentAnalyzer {
       stems = stemmedReview)
   }
 
-  def analyzePolish(review: String, dictionaries: StemmedWords, stemmer: Stemmer): AnalyzedReview = {
+  def analyzer(dictionaries: StemmedWords, stemmer: Stemmer, lang: SupportedLanguages.Value) = {
+    lang match {
+      case SupportedLanguages.PL => (r: String) => analyzePolish(r, dictionaries, stemmer)
+      case SupportedLanguages.EN => (r: String) => analyzeEnglish(r, dictionaries, stemmer)
+    }
+  }
+
+  protected[analyzer] def analyzePolish(review: String, dictionaries: StemmedWords, stemmer: Stemmer): AnalyzedReview = {
 
     val words = review.split(" ").map(_.toLowerCase(SupportedLanguages.getLocale(dictionaries.lang)))
 
@@ -43,7 +50,7 @@ object SentimentAnalyzer {
     doAnalyze(review, total, dictionaries, stemmedReview)
   }
 
-  def analyzeEnglish(review: String, dictionaries: StemmedWords, stemmer: Stemmer): AnalyzedReview = {
+  protected[analyzer] def analyzeEnglish(review: String, dictionaries: StemmedWords, stemmer: Stemmer): AnalyzedReview = {
     val stemmedReview = stemmer.stem(review)
 
     val total = review.split(" ").size
@@ -59,10 +66,16 @@ object SentimentAnalyzer {
     nominator / denominator
   }
 
-  def relevance(ar: AnalyzedReviewSimple, totalWordsAcrossAllReviews: Int) = {
-    ar.totalWords / totalWordsAcrossAllReviews
+  def relevance(ar: AnalyzedReviewSimple, total: TotalWordsAcrossReviews): Double = {
+    ar.totalWords.toDouble / total.total.toDouble
+  }
+
+  def totalWords(list: List[AnalyzedReviewSimple]): TotalWordsAcrossReviews = {
+    TotalWordsAcrossReviews(list.map(_.totalWords).reduce(_ + _))
   }
 }
+
+case class TotalWordsAcrossReviews(total: Int)
 
 case class AnalyzedReview(review: String, positiveWords: Seq[String], negativeWords: Seq[String], ambiguous: Seq[String], neutral: Seq[String], totalWords: Int, stems: Seq[String]) {
   lazy val positiveWordsCount = positiveWords.size

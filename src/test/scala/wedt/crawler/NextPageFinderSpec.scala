@@ -1,13 +1,12 @@
-package wedt
+package wedt.crawler
 
 import org.jsoup.nodes.Element
-import org.scalatest.FlatSpec
-import org.scalatest.Matchers
-import wedt.crawler.SupportedLanguages
-import wedt.crawler.WebsiteToXml._
-import wedt.ws.RawWebsite
-import scala.collection.JavaConversions._
+import org.scalatest.{FlatSpec, Matchers}
 import org.scalatest.OptionValues._
+import wedt.SampleData
+import wedt.ws.RawWebsite
+
+import scala.collection.JavaConversions._
 
 /**
  * @author Marek Lewandowski <marek.lewandowski@semantive.com>
@@ -15,9 +14,8 @@ import org.scalatest.OptionValues._
  */
 class NextPageFinderSpec extends FlatSpec with Matchers with SampleData {
 
-  import wedt.crawler.WebsiteToXml._
   import wedt.crawler.NextPageFinder._
-  import wedt.crawler.UrlToBaseUrl._
+  import wedt.crawler.WebsiteToXml._
 
   "NextPageFinder" should "find all links in page" in {
     val doc = toJsoupDoc(dummy.html, dummy.baseUrl).right.get

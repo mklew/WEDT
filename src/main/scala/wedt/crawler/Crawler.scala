@@ -6,7 +6,6 @@ import java.util.Locale
 import com.typesafe.scalalogging.slf4j.StrictLogging
 import org.jsoup.Jsoup
 
-import scala.annotation.tailrec
 import scala.util.{Failure, Success, Try}
 import org.jsoup.nodes.{Element, Document}
 import scala.collection.JavaConversions._
@@ -94,7 +93,7 @@ object ReviewsFinder {
   // TODO more keywords
   val anyAttributeValues = Seq("review", "opinion", "comment", "author", "rating", "komentarz", "ocena", "autor", "opinia", "recenzja")
 
-  def findAll(root: Element, predicate: Element => Boolean): Seq[Element] = {
+  protected[crawler] def findAll(root: Element, predicate: Element => Boolean): Seq[Element] = {
     val results = for {
         child <- root.children().toIndexedSeq
     } yield {
@@ -206,38 +205,38 @@ object ReviewsFinder {
 
 object NextPageFinder {
 
-  val langToKeyWords = Map(
+  private val langToKeyWords = Map(
     SupportedLanguages.PL -> Seq("następna", "nastepny", "nastepna", "dalej", "przejdź"),
     SupportedLanguages.EN -> Seq("next")
   )
 
-  val attributesToCheckForKeywords = List("title", "alt")
-  val cssClasses = Seq("next", "next_page", "pagination")
+  private val attributesToCheckForKeywords = List("title", "alt")
+  private val cssClasses = Seq("next", "next_page", "pagination")
 
   /**
    * Unfortunately html is rarely valid xml so we will be working with raw strings
    * @param htmlDoc - jsoup document
    */
-  def findAllLinks(htmlDoc: Document): Seq[Element] = {
+  protected[crawler] def findAllLinks(htmlDoc: Document): Seq[Element] = {
     htmlDoc.select("a").filter(_.hasAttr("href"))
   }
 
-  def findLinksWithRelNext(htmlDoc: Document): Seq[Element] = {
+  protected[crawler] def findLinksWithRelNext(htmlDoc: Document): Seq[Element] = {
     htmlDoc.select("""a[rel="next"]""").filter(_.hasAttr("href"))
   }
 
-  def findLinksWhichMatchAttributesAndValues(htmlDoc: Document, attr: String, value: String): Seq[Element] = {
+  protected[crawler] def findLinksWhichMatchAttributesAndValues(htmlDoc: Document, attr: String, value: String): Seq[Element] = {
     htmlDoc.select(s"""a[$attr~="$value"]""").filter(_.hasAttr("href"))
   }
 
   private def isRelative(href: String) = href.startsWith("/")
 
-  def filterToOnlyThoseWithBaseUrl(baseUrl: String)(element: Element): Boolean = {
+  protected[crawler] def filterToOnlyThoseWithBaseUrl(baseUrl: String)(element: Element): Boolean = {
     val href = element.attr("href")
     isRelative(href) || href.startsWith(baseUrl)
   }
 
-  def joinWithRelative(baseUrl: String, relative: String): String = {
+  protected[crawler] def joinWithRelative(baseUrl: String, relative: String): String = {
     if(baseUrl.endsWith("/") && relative.startsWith("/")) {
       baseUrl + relative.tail
     }
@@ -250,7 +249,7 @@ object NextPageFinder {
     else baseUrl + "/" + relative
   }
 
-  def longestPrefix(baseUrl: String, url: String)(element: Element): String = {
+  protected[crawler] def longestPrefix(baseUrl: String, url: String)(element: Element): String = {
     require(element.hasAttr("href"))
     val href = element.attr("href")
 
@@ -266,11 +265,15 @@ object NextPageFinder {
     prefixes.filter(p => absoluteHref.startsWith(p)).maxBy(_.length)
   }
 
-  def orderByLongestPrefix(baseUrl: String, url: String)(elements: Seq[Element]): Seq[Element] = {
+  protected[crawler] def orderByLongestPrefix(baseUrl: String, url: String)(elements: Seq[Element]): Seq[Element] = {
     elements.map(e => e -> longestPrefix(baseUrl, url)(e)).toSeq.sortBy(_._2.length).reverse.map(_._1)
   }
 
   case class LinkFindingParameters(locale: Locale, keywords: Seq[String])
+
+  def findNextPageLink(htmlDoc: Document, baseUrl: String, url: String, lang: SupportedLanguages.Value): Option[String] = {
+    findPotentialNextPageLinks(htmlDoc, baseUrl, url, lang).headOption.map(_.attr("href"))
+  }
 
   def findPotentialNextPageLinks(htmlDoc: Document, baseUrl: String, url: String, lang: SupportedLanguages.Value): Seq[Element] = {
     val params = lang match {
@@ -319,7 +322,7 @@ object NextPageFinder {
    * @param params - language specific parameters
    * @return
    */
-  def findLinksAlgorithm(htmlDoc: Document, baseUrl: String, url: String, params: LinkFindingParameters): Seq[Element] = {
+  protected[crawler] def findLinksAlgorithm(htmlDoc: Document, baseUrl: String, url: String, params: LinkFindingParameters): Seq[Element] = {
     val allLinks = findAllLinks(htmlDoc).filter(filterToOnlyThoseWithBaseUrl(baseUrl))
     val withRelNext = findLinksWithRelNext(htmlDoc).filter(filterToOnlyThoseWithBaseUrl(baseUrl))
     val containingKeywords = filerByKeywords(params, allLinks)

@@ -20,6 +20,15 @@ object Dictionaries {
 
     Words(positiveWords, negativeWords, language)
   }
+
+  lazy val polishDictionaries = DictionaryStemmer.stemDictionary(loadDictionaries(SupportedLanguages.PL))
+
+  lazy val englishDictionaries = DictionaryStemmer.stemDictionary(loadDictionaries(SupportedLanguages.EN))
+
+  def getDictionary(language: SupportedLanguages.Value) = language match {
+    case SupportedLanguages.PL => polishDictionaries
+    case SupportedLanguages.EN => englishDictionaries
+  }
 }
 
 object DictionaryStemmer {

@@ -1,11 +1,15 @@
 package wedt.ws
 
 import akka.actor.Actor
+import com.typesafe.scalalogging.slf4j.StrictLogging
+import org.jsoup.nodes.Document
 import spray.http.{MediaTypes, StatusCodes}
 import spray.json.DefaultJsonProtocol
 import spray.routing._
+import wedt.analyzer.{SentimentAnalyzer, Dictionaries, Stemmers}
 import wedt.conf.Config
-import wedt.crawler.SupportedLanguages
+import wedt.crawler.ReviewsFinder.ReviewParams
+import wedt.crawler.{WebsiteToXml, NextPageFinder, SupportedLanguages}
 import wedt.di.WedtModule
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -25,7 +29,7 @@ class SentimentAnalyzerWsActor extends Actor with SentimentAnalyzerWs with WedtM
 }
 
 object JsonImplicits extends DefaultJsonProtocol {
-  implicit val impAnalyzeRequest = jsonFormat1(AnalyzeRequest)
+  implicit val impAnalyzeRequest = jsonFormat4(AnalyzeRequest)
   implicit val impPost = jsonFormat3(Post)
   implicit val impAnalyzeResponse = jsonFormat2(AnalyzeResponse)
 }
@@ -34,22 +38,127 @@ case class RawWebsite(url: String, html: String) {
   lazy val baseUrl = wedt.crawler.UrlToBaseUrl.toBaseUrl(url)
 }
 
-case class AnalyzeRequest(url: String)
+case class AnalyzeRequest(url: String, minimumReviews: Option[Int], minimumWordsInReview: Option[Int], maxPages: Option[Int])
 
 case class Analysis(request: AnalyzeRequest, lang: SupportedLanguages.Value)
 
 case class Post(text: String, sentiment: Double, relevance: Double)
 
-case class AnalyzeResponse(request: AnalyzeRequest, posts: Seq[Post])
+case class AnalyzeResponse(request: AnalyzeRequest, posts: List[Post])
 
-trait SentimentAnalyzerWs extends HttpService {
+trait SentimentAnalyzerWs extends HttpService with StrictLogging {
   this: WedtModule =>
   override def actorRefFactory = actorSystem
 
   import spray.httpx.SprayJsonSupport.{sprayJsonMarshaller, sprayJsonUnmarshaller}
   import wedt.ws.JsonImplicits._
 
-  val queryHandler: (Analysis) => Future[Either[String, AnalyzeResponse]] = ???
+
+  def findNextPageLink(doc: Document, baseUrl: String, url: String, lang: SupportedLanguages.Value): Option[String] = {
+    NextPageFinder.findNextPageLink(doc, baseUrl, url, lang) match {
+      case Some(nextPageLink) => Some(nextPageLink)
+      case None => {
+        logger.info(s"Could not find link to next page for url: $url")
+        None
+      }
+    }
+  }
+
+  def fetchPages(doc: Document, baseUrl: String, url: String, lang: SupportedLanguages.Value, numberOfPages: Int): Future[List[Document]] = {
+    if (numberOfPages > 0) {
+      findNextPageLink(doc, baseUrl, url, lang) match {
+        case Some(nextUrl) =>
+          httpClient.get(nextUrl).flatMap(html => {
+            logger.info(s"Got html for next page with url: $nextUrl")
+
+            WebsiteToXml.toJsoupDoc(html) match {
+              case Left(err) => Future.successful(List())
+              case Right(nextDoc) => fetchPages(nextDoc, baseUrl, url, lang, numberOfPages - 1).map(x => nextDoc :: x)
+            }
+          })
+
+        case None => Future.successful(List())
+      }
+    }
+    else Future.successful(List())
+  }
+
+
+  val queryHandler: (Analysis) => Future[Either[String, AnalyzeResponse]] = (analysis) => {
+
+    val url = analysis.request.url
+    val lang = analysis.lang
+    logger.info(s"Got request to analyze url: $url for language: ${analysis.lang}")
+
+    import wedt.crawler._
+
+    httpClient.get(url).flatMap( html => {
+      logger.info(s"Got html response for url: $url")
+
+      WebsiteToXml.toJsoupDoc(html) match {
+        case Left(err) => Future.successful(Left(err))
+        case Right(doc) =>
+          val baseUrl = UrlToBaseUrl.toBaseUrl(url)
+          val params = ReviewParams(analysis.request.minimumReviews.getOrElse(Config.crawler.minimumPosts),
+            analysis.request.minimumWordsInReview.getOrElse(Config.crawler.minimumWords))
+
+          // TODO request has timeout so I doubt we could visit all 100 pages of reviews,
+          // Plus there is risk of being banned so there is configurable cap of maximal number of pages.
+          val pagesToAnalyze = analysis.request.maxPages.getOrElse(Config.crawler.pagesToAnalyze)
+
+          val maybeSomeReviews = ReviewsFinder.findReviews(doc, lang, params)
+
+          if(maybeSomeReviews.nonEmpty) {
+
+            val allPagesToAnalyzeF = fetchPages(doc, baseUrl, url, lang, pagesToAnalyze).map {
+              case Nil => logger.info("Could not retrieve any more pages besides starting one")
+                List(doc)
+              case restOfPages => {
+                logger.info(s"Retireved ${restOfPages.size} pages")
+                doc :: restOfPages
+              }
+            }
+
+            val postsF = allPagesToAnalyzeF.map(allPages => {
+              val allReviews = allPages.map(page => ReviewsFinder.findReviews(doc, lang, params)).flatten
+              val stemmer = Stemmers.getStemmer(lang) // creating stemmer per request because they are not thread safe
+              val dictionary = Dictionaries.getDictionary(lang)
+              val analyzer = SentimentAnalyzer.analyzer(dictionary, stemmer, lang)
+
+              val analyzedReviews = allReviews.map(review => {
+                analyzer(review.review)
+              })
+
+              val analyzedSimple = analyzedReviews.map(_.toSimpleForm)
+              val total = SentimentAnalyzer.totalWords(analyzedSimple)
+              val sentiments = analyzedSimple.map(review => SentimentAnalyzer.calculateSentiment(review))
+              val relevances = analyzedSimple.map(review => SentimentAnalyzer.relevance(review, total))
+
+              val analyzedPosts = analyzedSimple.map(review => {
+                Post(review.review, SentimentAnalyzer.calculateSentiment(review), SentimentAnalyzer.relevance(review, total))
+              })
+
+              analyzedPosts
+            })
+
+            postsF.map(posts => {
+              val either: Either[String, AnalyzeResponse] = Right(AnalyzeResponse(analysis.request, posts))
+              either
+            })
+          }
+          else {
+            Future.successful(Left(
+              s"""
+                 |Could not detect any reviews on site ${url} or there are no sufficient number of reviews.
+                 |Requires ${params.minimumReviews} minimum reviews and each review should have minimum of ${params.minimumWordsInReview} words.
+               """.stripMargin))
+          }
+
+      }
+
+    })
+
+  }
 
   val queryRoute: Route = path(Config.restApi.context / Config.restApi.queryPath) {
     post {
