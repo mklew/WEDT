@@ -12,6 +12,8 @@ val sprayV = "1.3.2"
 
 val akkaV = "2.3.6"
 
+val luceneV = "4.10.3"
+
 scalaVersion := "2.11.4"
 
 version := "0.0.1-SNAPSHOT"
@@ -38,7 +40,10 @@ libraryDependencies ++= Seq(
   "com.typesafe"                % "config"                 % "1.2.1",
   "org.scala-lang.modules"     %% "scala-xml"              % "1.0.2",
   "net.ceedubs"                %% "ficus"                  % "1.1.1",
-  "org.jsoup" % "jsoup" % "1.8.1"
+  "org.jsoup"                   % "jsoup"                  % "1.8.1",
+  "org.apache.lucene"           % "lucene-core"            % luceneV,
+  "org.apache.lucene"           % "lucene-analyzers-common" % luceneV,
+  "org.apache.lucene"           % "lucene-queryparser"     % luceneV
 )
 
 fork := true

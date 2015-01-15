@@ -97,12 +97,53 @@ class SentimentAnalyzerSpec extends FlatSpec with Matchers {
 
     val stemmedWords = DictionaryStemmer.stemDictionary(words)
     val stemmer = Stemmers.getStemmer(language)
-    val r = SentimentAnalyzer.analyze(review, stemmedWords, stemmer)
+    val r = SentimentAnalyzer.analyzePolish(review, stemmedWords, stemmer)
 
     println(
       s"""
         | Positive words count: ${r.positiveWordsCount}
         | Negative words count: ${r.negativeWordsCount}
+        | Total words count: ${r.totalWords}
+        |
+        | Positive words: ${r.positiveWords}
+        | Negative words: ${r.negativeWords}
+      """.stripMargin)
+  }
+
+
+  "English analyzer" should "produce stems for english text" in {
+    val review = "The first thing I will point out before reviewing the toothbrush, is that it comes with a 2 prong plug, " +
+      "so my initial excitement at it arriving was somewhat dampened by the realisation that I needed an adapter before" +
+      " I could charge it!\n\nI have had my toothbrush for about a week now, and I absolutely love it. I have used cheaper " +
+      "electric tootchbrushes before, but I notice a huge difference with this one. I have suffered with sensitivity" +
+      " in my teeth at times, so the idea of the 3 settings, including the sensitive option, really appealed to me. " +
+      "However, I thought I would give the whitening option a go, and so far no sensitivity issues! I always notice " +
+      "my teeth whiter and feeling cleaner with an electric toothbrush compared to a manual, however I definitely notice" +
+      " an improvement in their colour with this new brush (and that is without a whitening tootpaste).\nMy teeth feel" +
+      " and look clea, fresh and plaque free, between my teeth look cleaner, so the specially designed head seems to be " +
+      "doing its job. Also, I don't like really soft toothbrushes, or round heads on an electric toothbrush, so I find this " +
+      "one perfect. I haven't had any issues with it being too harsh, gum bleeding, and i also have a permanenet retainer " +
+      "which it seems to be gentle enough on whilst easily cleaning around it.\n\nI haven't yet had to recharge my toothbrush, " +
+      "which was a concern as I previously used a bettery powered brush.\n\nOther nice points with the brush are that it comes " +
+      "with a spare head, and a nice little case so it can travel.\n\nI was never sure about spending larger amounts of money " +
+      "on a toothbrush, but I would class this as mid range price-wise, there are more expensive brushes about, but for me this" +
+      " brush is perfect and I would highly recommend it."
+
+
+    val language = SupportedLanguages.EN
+
+    val words = loadDictionaries(language)
+
+    val stemmedWords = DictionaryStemmer.stemDictionary(words)
+    val stemmer = Stemmers.getStemmer(language)
+    val r = SentimentAnalyzer.analyzeEnglish(review, stemmedWords, stemmer)
+
+    println(
+      s"""
+        | Positive words count: ${r.positiveWordsCount}
+        | Negative words count: ${r.negativeWordsCount}
+        | Ambiguous words count: ${r.ambiguous.size}
+        | Neutral words count: ${r.neutral.size}
         | Total words count: ${r.totalWords}
         |
         | Positive words: ${r.positiveWords}

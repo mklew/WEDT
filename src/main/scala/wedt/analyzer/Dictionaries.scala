@@ -1,6 +1,11 @@
 package wedt.analyzer
 
+import java.io.StringReader
+
 import morfologik.stemming.{IStemmer, PolishStemmer}
+import org.apache.lucene.analysis.Analyzer
+import org.apache.lucene.analysis.en.EnglishAnalyzer
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute
 import wedt.crawler.SupportedLanguages
 
 /**
@@ -11,6 +16,7 @@ object Dictionaries {
   def loadDictionaries(language: SupportedLanguages.Value): Words = {
     val positiveWords = scala.io.Source.fromURL(getClass.getResource(s"/dict-positive-${language.toString}"), "UTF-8").getLines().toSet
     val negativeWords = scala.io.Source.fromURL(getClass.getResource(s"/dict-negative-${language.toString}"), "UTF-8").getLines().toSet
+    //val stopWords = scala.io.Source.fromURL(getClass.getResource(s"/stop-words-${language.toString}"), "UTF-8").getLines().toSet
 
     Words(positiveWords, negativeWords, language)
   }
@@ -32,7 +38,7 @@ object DictionaryStemmer {
     val stemmer = Stemmers.getStemmer(words.lang)
 
     StemmedWords(stemsForWords(words.positive.toSeq, stemmer), stemsForWords(words.negative.toSeq, stemmer),
-      words.lang)
+       words.lang)
   }
 }
 
@@ -41,7 +47,7 @@ object Stemmers {
   def getStemmer(lang: SupportedLanguages.Value): Stemmer = {
     lang match {
       case SupportedLanguages.PL => new MorfologikStemmer
-      case SupportedLanguages.EN => ??? // TODO add Porter or Snowball stemmer from Lucence 
+      case SupportedLanguages.EN => new EnglishStemmer
     }
   }
 }
@@ -69,5 +75,42 @@ class MorfologikStemmer extends Stemmer {
       stemsBuffer.append(stem)
     }
     stemsBuffer.toSeq
+  }
+}
+
+class EnglishStemmer extends Stemmer {
+  override def stem(w: String): Seq[String] = {
+    val englishAnalyzer = TextAnalyzer.englishAnalyzer
+    TextAnalyzer.getTokens(w, englishAnalyzer)
+  }
+}
+
+object TextAnalyzer {
+
+  def englishAnalyzer = new EnglishAnalyzer
+
+  //  def apply(stopWords: Set[String]): TextAnalyzer = {
+  //
+  //    val stopwordsSet = new CharArraySet(stopWords, true)
+  //    new TextAnalyzer(stopwordsSet)
+  //  }
+
+  def getTokens(textToAnalyze: String, analyzer: Analyzer): Seq[String] = {
+    val stream = analyzer.tokenStream("field", new StringReader(textToAnalyze))
+
+    val termAtt= stream.addAttribute(classOf[CharTermAttribute])
+
+    val stemmedResults: scala.collection.mutable.Buffer[String] = scala.collection.mutable.ArrayBuffer()
+    try {
+      stream.reset()
+      while (stream.incrementToken) {
+        stemmedResults.append(termAtt.toString)
+      }
+      stream.end()
+    } finally {
+      stream.close()
+      analyzer.close()
+    }
+    stemmedResults.toSeq
   }
 }
