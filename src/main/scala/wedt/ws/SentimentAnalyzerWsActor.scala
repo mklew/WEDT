@@ -11,9 +11,10 @@ import wedt.conf.Config
 import wedt.crawler.ReviewsFinder.ReviewParams
 import wedt.crawler.{WebsiteToXml, NextPageFinder, SupportedLanguages}
 import wedt.di.WedtModule
+import spray.routing.directives.CachingDirectives._
 
-import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+import scala.concurrent.duration.Duration
 import scala.language.{implicitConversions, postfixOps}
 import scala.util.{Failure, Success}
 
@@ -49,9 +50,13 @@ case class AnalyzeResponse(request: AnalyzeRequest, posts: List[Post])
 trait SentimentAnalyzerWs extends HttpService with StrictLogging {
   this: WedtModule =>
   override def actorRefFactory = actorSystem
+  implicit val system = actorSystem
+  import system.dispatcher // execution context for futures
 
   import spray.httpx.SprayJsonSupport.{sprayJsonMarshaller, sprayJsonUnmarshaller}
   import wedt.ws.JsonImplicits._
+
+  val simpleCache = routeCache(maxCapacity = 1000, timeToIdle = Duration("30 min"))
 
 
   def findNextPageLink(doc: Document, baseUrl: String, url: String, lang: SupportedLanguages.Value): Option[String] = {
@@ -160,6 +165,12 @@ trait SentimentAnalyzerWs extends HttpService with StrictLogging {
 
   }
 
+  val infoRoute = path("/") {
+    get {
+      getFromResource("welcome/welcome.html")
+    }
+  }
+
   val queryRoute: Route = path(Config.restApi.context / Config.restApi.queryPath) {
     post {
       entity(as[AnalyzeRequest]) { raw =>
@@ -184,6 +195,6 @@ trait SentimentAnalyzerWs extends HttpService with StrictLogging {
         })
       }
     }
-  }
+  } ~ infoRoute
 
 }

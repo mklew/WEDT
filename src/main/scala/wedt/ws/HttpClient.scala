@@ -13,7 +13,7 @@ trait HttpClient {
 }
 
 class SprayHttpClient(actorSystem: ActorSystem) extends HttpClient {
-  implicit val system = ActorSystem()
+  implicit val system = actorSystem
   import system.dispatcher // execution context for futures
 
   override def get(url: String): Future[String] = {
