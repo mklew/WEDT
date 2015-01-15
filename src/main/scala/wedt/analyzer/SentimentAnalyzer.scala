@@ -51,12 +51,29 @@ object SentimentAnalyzer {
     doAnalyze(review, total, dictionaries, stemmedReview)
   }
 
+  def calculateSentiment(ar: AnalyzedReviewSimple): Double = {
+    val denominator = (ar.neutral + ar.positive + ar.negative).toDouble
+
+    val nominator = (ar.positive - ar.negative).toDouble
+
+    nominator / denominator
+  }
+
+  def relevance(ar: AnalyzedReviewSimple, totalWordsAcrossAllReviews: Int) = {
+    ar.totalWords / totalWordsAcrossAllReviews
+  }
 }
 
 case class AnalyzedReview(review: String, positiveWords: Seq[String], negativeWords: Seq[String], ambiguous: Seq[String], neutral: Seq[String], totalWords: Int, stems: Seq[String]) {
   lazy val positiveWordsCount = positiveWords.size
   lazy val negativeWordsCount = negativeWords.size
+
+  def toSimpleForm = AnalyzedReviewSimple(review, positiveWordsCount, negativeWordsCount, ambiguous.size, neutral.size, totalWords)
 }
+
+case class AnalyzedReviewSimple(review: String, positive: Int, negative: Int, ambiguous: Int, neutral: Int, totalWords: Int)
+
+case class AnalyzedReviewWithSentiment(sentiment: Double, analyzed: AnalyzedReview)
 
 
 //class MyAnalyzer extends Analyzer {

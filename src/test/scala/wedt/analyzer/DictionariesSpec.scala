@@ -99,14 +99,20 @@ class SentimentAnalyzerSpec extends FlatSpec with Matchers {
     val stemmer = Stemmers.getStemmer(language)
     val r = SentimentAnalyzer.analyzePolish(review, stemmedWords, stemmer)
 
+    val sentiment = SentimentAnalyzer.calculateSentiment(r.toSimpleForm)
+
     println(
       s"""
         | Positive words count: ${r.positiveWordsCount}
         | Negative words count: ${r.negativeWordsCount}
+        | Ambiguous words count: ${r.ambiguous.size}
+        | Neutral words count: ${r.neutral.size}
         | Total words count: ${r.totalWords}
         |
         | Positive words: ${r.positiveWords}
         | Negative words: ${r.negativeWords}
+        |
+        | Sentiment: $sentiment
       """.stripMargin)
   }
 
@@ -137,7 +143,7 @@ class SentimentAnalyzerSpec extends FlatSpec with Matchers {
     val stemmedWords = DictionaryStemmer.stemDictionary(words)
     val stemmer = Stemmers.getStemmer(language)
     val r = SentimentAnalyzer.analyzeEnglish(review, stemmedWords, stemmer)
-
+    val sentiment = SentimentAnalyzer.calculateSentiment(r.toSimpleForm)
     println(
       s"""
         | Positive words count: ${r.positiveWordsCount}
@@ -148,6 +154,8 @@ class SentimentAnalyzerSpec extends FlatSpec with Matchers {
         |
         | Positive words: ${r.positiveWords}
         | Negative words: ${r.negativeWords}
+        |
+        | Sentiment: $sentiment
       """.stripMargin)
   }
 }
