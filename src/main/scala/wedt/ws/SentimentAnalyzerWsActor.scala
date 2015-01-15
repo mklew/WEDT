@@ -6,6 +6,7 @@ import org.jsoup.nodes.Document
 import spray.http.{MediaTypes, StatusCodes}
 import spray.json.DefaultJsonProtocol
 import spray.routing._
+import spray.util.LoggingContext
 import wedt.analyzer.{SentimentAnalyzer, Dictionaries, Stemmers}
 import wedt.conf.Config
 import wedt.crawler.ReviewsFinder.ReviewParams
@@ -56,12 +57,23 @@ trait SentimentAnalyzerWs extends HttpService with StrictLogging {
   import spray.httpx.SprayJsonSupport.{sprayJsonMarshaller, sprayJsonUnmarshaller}
   import wedt.ws.JsonImplicits._
 
-  val simpleCache = routeCache(maxCapacity = 1000, timeToIdle = Duration("30 min"))
+  implicit def myExceptionHandler(implicit log: LoggingContext) =
+    ExceptionHandler {
+      case e => requestUri { uri =>
+        log.error("Got error", e)
+        complete(400, e.printStackTrace)
+      }
+
+    }
+
 
 
   def findNextPageLink(doc: Document, baseUrl: String, url: String, lang: SupportedLanguages.Value): Option[String] = {
     NextPageFinder.findNextPageLink(doc, baseUrl, url, lang) match {
-      case Some(nextPageLink) => Some(nextPageLink)
+      case Some(nextPageLink) => {
+        logger.info(s"Found link to next page: $nextPageLink")
+        Some(nextPageLink)
+      }
       case None => {
         logger.info(s"Could not find link to next page for url: $url")
         None
@@ -73,8 +85,12 @@ trait SentimentAnalyzerWs extends HttpService with StrictLogging {
     if (numberOfPages > 0) {
       findNextPageLink(doc, baseUrl, url, lang) match {
         case Some(nextUrl) =>
-          httpClient.get(nextUrl).flatMap(html => {
-            logger.info(s"Got html for next page with url: $nextUrl")
+
+          val absUrl = NextPageFinder.toAbsoluteUrl(baseUrl, nextUrl)
+
+          httpClient.get(absUrl).flatMap(html => {
+            logger.info(s"Got html for next page with url: $absUrl")
+            logger.debug(html)
 
             WebsiteToXml.toJsoupDoc(html) match {
               case Left(err) => Future.successful(List())
@@ -99,75 +115,112 @@ trait SentimentAnalyzerWs extends HttpService with StrictLogging {
 
     httpClient.get(url).flatMap( html => {
       logger.info(s"Got html response for url: $url")
+      logger.debug(html)
+      try {
+        WebsiteToXml.toJsoupDoc(html) match {
+          case Left(err) => Future.successful(Left(err))
+          case Right(doc) =>
+            val baseUrl = UrlToBaseUrl.toBaseUrl(url)
+            val params = ReviewParams(analysis.request.minimumReviews.getOrElse(Config.crawler.minimumPosts),
+              analysis.request.minimumWordsInReview.getOrElse(Config.crawler.minimumWords))
 
-      WebsiteToXml.toJsoupDoc(html) match {
-        case Left(err) => Future.successful(Left(err))
-        case Right(doc) =>
-          val baseUrl = UrlToBaseUrl.toBaseUrl(url)
-          val params = ReviewParams(analysis.request.minimumReviews.getOrElse(Config.crawler.minimumPosts),
-            analysis.request.minimumWordsInReview.getOrElse(Config.crawler.minimumWords))
+            // TODO request has timeout so I doubt we could visit all 100 pages of reviews,
+            // Plus there is risk of being banned so there is configurable cap of maximal number of pages.
+            val pagesToAnalyze = analysis.request.maxPages.getOrElse(Config.crawler.pagesToAnalyze)
 
-          // TODO request has timeout so I doubt we could visit all 100 pages of reviews,
-          // Plus there is risk of being banned so there is configurable cap of maximal number of pages.
-          val pagesToAnalyze = analysis.request.maxPages.getOrElse(Config.crawler.pagesToAnalyze)
+            val maybeSomeReviews = ReviewsFinder.findReviews(doc, lang, params)
 
-          val maybeSomeReviews = ReviewsFinder.findReviews(doc, lang, params)
+            if(maybeSomeReviews.nonEmpty) {
 
-          if(maybeSomeReviews.nonEmpty) {
-
-            val allPagesToAnalyzeF = fetchPages(doc, baseUrl, url, lang, pagesToAnalyze).map {
-              case Nil => logger.info("Could not retrieve any more pages besides starting one")
-                List(doc)
-              case restOfPages => {
-                logger.info(s"Retireved ${restOfPages.size} pages")
-                doc :: restOfPages
+              val allPagesToAnalyzeF = fetchPages(doc, baseUrl, url, lang, pagesToAnalyze).map {
+                case Nil => logger.info("Could not retrieve any more pages besides starting one")
+                  List(doc)
+                case restOfPages => {
+                  logger.info(s"Retireved ${restOfPages.size} pages")
+                  doc :: restOfPages
+                }
               }
+
+              val postsF = allPagesToAnalyzeF.map(allPages => {
+                val allReviews = allPages.map(page => ReviewsFinder.findReviews(doc, lang, params)).flatten
+                val stemmer = Stemmers.getStemmer(lang) // creating stemmer per request because they are not thread safe
+                val dictionary = Dictionaries.getDictionary(lang)
+                val analyzer = SentimentAnalyzer.analyzer(dictionary, stemmer, lang)
+
+                val analyzedReviews = allReviews.map(review => {
+                  analyzer(review.review)
+                })
+
+                val analyzedSimple = analyzedReviews.map(_.toSimpleForm)
+                val total = SentimentAnalyzer.totalWords(analyzedSimple)
+                val sentiments = analyzedSimple.map(review => SentimentAnalyzer.calculateSentiment(review))
+                val relevances = analyzedSimple.map(review => SentimentAnalyzer.relevance(review, total))
+
+                val analyzedPosts = analyzedSimple.map(review => {
+                  Post(review.review, SentimentAnalyzer.calculateSentiment(review), SentimentAnalyzer.relevance(review, total))
+                })
+
+                analyzedPosts
+              })
+
+              postsF.map(posts => {
+                val either: Either[String, AnalyzeResponse] = Right(AnalyzeResponse(analysis.request, posts))
+                either
+              })
             }
-
-            val postsF = allPagesToAnalyzeF.map(allPages => {
-              val allReviews = allPages.map(page => ReviewsFinder.findReviews(doc, lang, params)).flatten
-              val stemmer = Stemmers.getStemmer(lang) // creating stemmer per request because they are not thread safe
-              val dictionary = Dictionaries.getDictionary(lang)
-              val analyzer = SentimentAnalyzer.analyzer(dictionary, stemmer, lang)
-
-              val analyzedReviews = allReviews.map(review => {
-                analyzer(review.review)
-              })
-
-              val analyzedSimple = analyzedReviews.map(_.toSimpleForm)
-              val total = SentimentAnalyzer.totalWords(analyzedSimple)
-              val sentiments = analyzedSimple.map(review => SentimentAnalyzer.calculateSentiment(review))
-              val relevances = analyzedSimple.map(review => SentimentAnalyzer.relevance(review, total))
-
-              val analyzedPosts = analyzedSimple.map(review => {
-                Post(review.review, SentimentAnalyzer.calculateSentiment(review), SentimentAnalyzer.relevance(review, total))
-              })
-
-              analyzedPosts
-            })
-
-            postsF.map(posts => {
-              val either: Either[String, AnalyzeResponse] = Right(AnalyzeResponse(analysis.request, posts))
-              either
-            })
-          }
-          else {
-            Future.successful(Left(
-              s"""
+            else {
+              Future.successful(Left(
+                s"""
                  |Could not detect any reviews on site ${url} or there are no sufficient number of reviews.
                  |Requires ${params.minimumReviews} minimum reviews and each review should have minimum of ${params.minimumWordsInReview} words.
                """.stripMargin))
-          }
-
+            }
+        }
+      } catch {
+        case e =>
+          logger.error("Error occured", e)
+          Future.successful(Left("Error occured " + e.getMessage))
       }
 
     })
 
   }
 
-  val infoRoute = path("/") {
-    get {
-      getFromResource("welcome/welcome.html")
+  val infoRoute = get {
+    respondWithMediaType(MediaTypes.`text/html`) { ctx =>
+
+      ctx.complete(
+        s"""
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <title></title>
+</head>
+<body>
+<h1> welcome</h1>
+<pre>For english analysis POST JSON to ${Config.restApi.context}/${Config.restApi.queryPath}?lang=EN</pre>
+<pre>For polish analysis POST JSON to ${Config.restApi.context}/${Config.restApi.queryPath}?lang=PL</pre>
+
+<div>
+  <p>Example json</p>
+
+  <pre>
+      { "url": "http://cokupic.pl/produkt/Lark-FreeBird-35AT-35-LarkMap-Polska" }
+  </pre>
+
+  <pre>
+      { "url": "http://cokupic.pl/produkt/Lark-FreeBird-35AT-35-LarkMap-Polska",
+        "minimumReviews": 3,
+        "minimumWordsInReview": 10,
+        "maxPages": 5
+       }
+  </pre>
+</div>
+</body>
+</html>
+         """)
+
     }
   }
 

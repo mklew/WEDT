@@ -82,7 +82,7 @@ object UrlToBaseUrl {
   }
 }
 
-object ReviewsFinder {
+object ReviewsFinder extends StrictLogging {
 
   case class Review(review: String)
 
@@ -150,6 +150,7 @@ object ReviewsFinder {
   protected[crawler] def findDisjointElements(htmlDoc: Document) = {
     val body = findBody(htmlDoc)
     val elementsThatContainSomeAttributes = findAllWithKeyWords(body)
+    logger.info(s"Found ${elementsThatContainSomeAttributes.size} elements that contain keywords")
     val withParents = elementsThatContainSomeAttributes.map(toElementWithParents)
     onlyDisjointElements(withParents)
   }
@@ -170,8 +171,12 @@ object ReviewsFinder {
    * @return
    */
   def findReviews(htmlDoc: Document, lang: SupportedLanguages.Lang, params: ReviewParams): Reviews = {
+    logger.info(s"findReviews called. Params: $params")
     val disjointElements = findDisjointElements(htmlDoc)
+    logger.info(s"Got ${disjointElements.size} disjoint elements")
     val reviewsGroups = groupDisjoint(disjointElements).map(s => s.map(_.e))
+
+    logger.info(s"Grouped them into ${reviewsGroups.size} groups")
 
     val groupsWithComments = for {
       reviewGroup <- reviewsGroups
@@ -193,10 +198,29 @@ object ReviewsFinder {
       commentsInThatGroup
     }
 
+    logger.info(s"Groups that contain some reviews: ${groupsWithComments.size}")
+    logger.debug(groupsWithComments.mkString("\n\n\n"))
+
     val onlyGroupsWithMinimumOfReviews = groupsWithComments.filter(_.size >= params.minimumReviews)
 
+    val groupsWithReviews: Seq[Seq[String]] = if(groupsWithComments.nonEmpty && onlyGroupsWithMinimumOfReviews.isEmpty) {
+      val merged = groupsWithComments.flatten
+
+      if(merged.size >= params.minimumReviews)
+        Seq(merged)
+      else Seq()
+    } else onlyGroupsWithMinimumOfReviews
+
+    logger.info(s"Groups that satify minimum reviews requirements: ${onlyGroupsWithMinimumOfReviews.size}")
+
     // TODO można albo wszystkie grupy złączyć, albo wziąć tą z największą ilością komentarzy. Chyba lepiej jak się weźmie tą z najwyższą ilościa komentarzy, to będzie większy precision
-    val finalReviews = onlyGroupsWithMinimumOfReviews.maxBy(_.size)
+    val finalReviews = if(groupsWithReviews.nonEmpty) groupsWithReviews.maxBy(_.size) else Seq()
+
+    logger.info(s"Final reviews number: ${finalReviews.size}")
+    finalReviews.headOption.map(r => {
+      logger.info(s"First review: $r")
+    })
+
 
     finalReviews.map(Review)
   }
@@ -235,6 +259,8 @@ object NextPageFinder {
     val href = element.attr("href")
     isRelative(href) || href.startsWith(baseUrl)
   }
+
+  def toAbsoluteUrl(baseUrl: String, maybeRelative: String) = if(isRelative(maybeRelative)) joinWithRelative(baseUrl, maybeRelative) else maybeRelative
 
   protected[crawler] def joinWithRelative(baseUrl: String, relative: String): String = {
     if(baseUrl.endsWith("/") && relative.startsWith("/")) {

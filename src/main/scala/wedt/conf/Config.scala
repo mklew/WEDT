@@ -11,7 +11,7 @@ import net.ceedubs.ficus.Ficus._
 object Config extends StrictLogging {
 
   val cf = {
-    val nameOfConfig: String = sys.props.get("config").getOrElse("application.conf")
+    val nameOfConfig: String = sys.props.get("config").getOrElse("config.conf")
     logger.info(s"Loading config $nameOfConfig")
     ConfigFactory.load(nameOfConfig)
   }
