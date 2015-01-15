@@ -22,6 +22,13 @@ object Crawler {
 object SupportedLanguages extends Enumeration {
   type Lang = Value
   val PL, EN = Value
+
+  def getLocale(v: Value) = {
+    v match {
+      case PL => new java.util.Locale("pl_PL")
+      case EN => Locale.ENGLISH
+    }
+  }
 }
 
 object WebsiteToXml extends StrictLogging {
