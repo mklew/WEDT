@@ -7,12 +7,11 @@ import spray.http.{MediaTypes, StatusCodes}
 import spray.json.DefaultJsonProtocol
 import spray.routing._
 import spray.util.LoggingContext
-import wedt.analyzer.{SentimentAnalyzer, Dictionaries, Stemmers}
+import wedt.analyzer._
 import wedt.conf.Config
 import wedt.crawler.ReviewsFinder.ReviewParams
 import wedt.crawler.{WebsiteToXml, NextPageFinder, SupportedLanguages}
 import wedt.di.WedtModule
-import spray.routing.directives.CachingDirectives._
 
 import scala.concurrent.Future
 import scala.concurrent.duration.Duration
@@ -33,7 +32,7 @@ class SentimentAnalyzerWsActor extends Actor with SentimentAnalyzerWs with WedtM
 object JsonImplicits extends DefaultJsonProtocol {
   implicit val impAnalyzeRequest = jsonFormat4(AnalyzeRequest)
   implicit val impPost = jsonFormat3(Post)
-  implicit val impAnalyzeResponse = jsonFormat2(AnalyzeResponse)
+  implicit val impAnalyzeResponse = jsonFormat3(AnalyzeResponse)
 }
 
 case class RawWebsite(url: String, html: String) {
@@ -44,9 +43,9 @@ case class AnalyzeRequest(url: String, minimumReviews: Option[Int], minimumWords
 
 case class Analysis(request: AnalyzeRequest, lang: SupportedLanguages.Value)
 
-case class Post(text: String, sentiment: Double, relevance: Double)
 
-case class AnalyzeResponse(request: AnalyzeRequest, posts: List[Post])
+
+case class AnalyzeResponse(request: AnalyzeRequest, posts: List[Post], overallSentiment: Double)
 
 trait SentimentAnalyzerWs extends HttpService with StrictLogging {
   this: WedtModule =>
@@ -153,18 +152,18 @@ trait SentimentAnalyzerWs extends HttpService with StrictLogging {
 
                 val analyzedSimple = analyzedReviews.map(_.toSimpleForm)
                 val total = SentimentAnalyzer.totalWords(analyzedSimple)
-                val sentiments = analyzedSimple.map(review => SentimentAnalyzer.calculateSentiment(review))
-                val relevances = analyzedSimple.map(review => SentimentAnalyzer.relevance(review, total))
 
                 val analyzedPosts = analyzedSimple.map(review => {
                   Post(review.review, SentimentAnalyzer.calculateSentiment(review), SentimentAnalyzer.relevance(review, total))
                 })
 
-                analyzedPosts
+                val overAllSentiment = SentimentAnalyzer.overallSentiment(analyzedPosts)
+
+                (analyzedPosts, overAllSentiment)
               })
 
               postsF.map(posts => {
-                val either: Either[String, AnalyzeResponse] = Right(AnalyzeResponse(analysis.request, posts))
+                val either: Either[String, AnalyzeResponse] = Right(AnalyzeResponse(analysis.request, posts._1, posts._2))
                 either
               })
             }

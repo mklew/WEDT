@@ -73,7 +73,18 @@ object SentimentAnalyzer {
   def totalWords(list: List[AnalyzedReviewSimple]): TotalWordsAcrossReviews = {
     TotalWordsAcrossReviews(list.map(_.totalWords).reduce(_ + _))
   }
+
+  def overallSentiment(list: List[Post]): Double = {
+    if(list.isEmpty) 0.0
+    else {
+      val totalSentiment = list.map(_.sentiment).reduce(_ + _)
+      totalSentiment / list.size
+    }
+  }
+
 }
+
+case class Post(text: String, sentiment: Double, relevance: Double)
 
 case class TotalWordsAcrossReviews(total: Int)
 
