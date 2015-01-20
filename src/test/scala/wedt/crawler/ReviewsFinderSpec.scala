@@ -11,7 +11,7 @@ import scala.collection.JavaConversions._
  */
 class ReviewsFinderSpec extends FlatSpec with Matchers with SampleData {
 
-  import wedt.crawler.ReviewsFinder._
+  import wedt.crawler.MLReviewsFinder._
 
   "ReviewsFinder" should "find all elements with specific keywords merging them to only disjoint elements" in {
     val doc = toJsoupDoc(dummyDisjointHtml).right.get

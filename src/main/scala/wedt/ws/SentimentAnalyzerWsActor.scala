@@ -7,15 +7,12 @@ import spray.http.{MediaTypes, StatusCodes}
 import spray.json.DefaultJsonProtocol
 import spray.routing._
 import spray.util.LoggingContext
-import wedt.analyzer.{SentimentAnalyzer, Dictionaries, Stemmers}
+import wedt.analyzer.{Dictionaries, SentimentAnalyzer, Stemmers}
 import wedt.conf.Config
-import wedt.crawler.ReviewsFinder.ReviewParams
-import wedt.crawler.{WebsiteToXml, NextPageFinder, SupportedLanguages}
+import wedt.crawler._
 import wedt.di.WedtModule
-import spray.routing.directives.CachingDirectives._
 
 import scala.concurrent.Future
-import scala.concurrent.duration.Duration
 import scala.language.{implicitConversions, postfixOps}
 import scala.util.{Failure, Success}
 
@@ -31,7 +28,7 @@ class SentimentAnalyzerWsActor extends Actor with SentimentAnalyzerWs with WedtM
 }
 
 object JsonImplicits extends DefaultJsonProtocol {
-  implicit val impAnalyzeRequest = jsonFormat4(AnalyzeRequest)
+  implicit val impAnalyzeRequest = jsonFormat6(AnalyzeRequest)
   implicit val impPost = jsonFormat3(Post)
   implicit val impAnalyzeResponse = jsonFormat2(AnalyzeResponse)
 }
@@ -40,7 +37,7 @@ case class RawWebsite(url: String, html: String) {
   lazy val baseUrl = wedt.crawler.UrlToBaseUrl.toBaseUrl(url)
 }
 
-case class AnalyzeRequest(url: String, minimumReviews: Option[Int], minimumWordsInReview: Option[Int], maxPages: Option[Int])
+case class AnalyzeRequest(url: String, minimumReviews: Option[Int], minimumWordsInReview: Option[Int], maxPages: Option[Int], reviewsFinder: Option[String], parentsDepth: Option[Int])
 
 case class Analysis(request: AnalyzeRequest, lang: SupportedLanguages.Value)
 
@@ -52,9 +49,8 @@ trait SentimentAnalyzerWs extends HttpService with StrictLogging {
   this: WedtModule =>
   override def actorRefFactory = actorSystem
   implicit val system = actorSystem
-  import system.dispatcher // execution context for futures
-
   import spray.httpx.SprayJsonSupport.{sprayJsonMarshaller, sprayJsonUnmarshaller}
+  import system.dispatcher
   import wedt.ws.JsonImplicits._
 
   implicit def myExceptionHandler(implicit log: LoggingContext) =
@@ -123,12 +119,13 @@ trait SentimentAnalyzerWs extends HttpService with StrictLogging {
             val baseUrl = UrlToBaseUrl.toBaseUrl(url)
             val params = ReviewParams(analysis.request.minimumReviews.getOrElse(Config.crawler.minimumPosts),
               analysis.request.minimumWordsInReview.getOrElse(Config.crawler.minimumWords))
-
+            val parentsDepth = analysis.request.parentsDepth.getOrElse(0)
+            val reviewsFinder = if(analysis.request.reviewsFinder.getOrElse("ml").toLowerCase() == "mk") new MKReviewsFinder(parentsDepth) else MLReviewsFinder
             // TODO request has timeout so I doubt we could visit all 100 pages of reviews,
             // Plus there is risk of being banned so there is configurable cap of maximal number of pages.
             val pagesToAnalyze = analysis.request.maxPages.getOrElse(Config.crawler.pagesToAnalyze)
 
-            val maybeSomeReviews = ReviewsFinder.findReviews(doc, lang, params)
+            val maybeSomeReviews = reviewsFinder.findReviews(doc, lang, params)
 
             if(maybeSomeReviews.nonEmpty) {
 
@@ -142,7 +139,7 @@ trait SentimentAnalyzerWs extends HttpService with StrictLogging {
               }
 
               val postsF = allPagesToAnalyzeF.map(allPages => {
-                val allReviews = allPages.map(page => ReviewsFinder.findReviews(doc, lang, params)).flatten
+                val allReviews = allPages.map(page => reviewsFinder.findReviews(doc, lang, params)).flatten
                 val stemmer = Stemmers.getStemmer(lang) // creating stemmer per request because they are not thread safe
                 val dictionary = Dictionaries.getDictionary(lang)
                 val analyzer = SentimentAnalyzer.analyzer(dictionary, stemmer, lang)
@@ -213,7 +210,9 @@ trait SentimentAnalyzerWs extends HttpService with StrictLogging {
       { "url": "http://cokupic.pl/produkt/Lark-FreeBird-35AT-35-LarkMap-Polska",
         "minimumReviews": 3,
         "minimumWordsInReview": 10,
-        "maxPages": 5
+        "maxPages": 5,
+        "reviewsFinder": "mk",
+        "parentsDepth": 0
        }
   </pre>
 </div>
@@ -227,7 +226,7 @@ trait SentimentAnalyzerWs extends HttpService with StrictLogging {
   val queryRoute: Route = path(Config.restApi.context / Config.restApi.queryPath) {
     post {
       entity(as[AnalyzeRequest]) { raw =>
-        anyParam('lang)(lang => {
+        anyParam('lang)((lang) => {
           val chosenLanguage = SupportedLanguages.withName(lang)
           onComplete(queryHandler(Analysis(raw, chosenLanguage))) { response => {
             response match {
