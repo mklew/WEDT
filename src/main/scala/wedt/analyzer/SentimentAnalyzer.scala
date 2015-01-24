@@ -16,12 +16,13 @@ import scala.collection.JavaConversions._
 object SentimentAnalyzer {
 
   private def doAnalyze(review: String, total: Int, dictionaries: StemmedWords, stemmedReview: scala.Seq[String]) = {
-    val checkedWithDictionaries = stemmedReview.map(stem => (stem, dictionaries.positive.contains(stem), dictionaries.negative.contains(stem)))
+    val checked = stemmedReview.map(stem => (stem, dictionaries.positive.contains(stem), dictionaries.negative.contains(stem)))
+    val sentimented = checked.zipWithIndex.map{case (w, i) => if((i > 1 && checked(i-2)._1=="nie") || (i > 0 && checked(i-1)._1=="nie")) (w._1, false, false) else w} // nie correct
 
-    val positiveUnique = checkedWithDictionaries.filter(x => x._2 && !x._3).map(_._1)
-    val negativeUnique = checkedWithDictionaries.filter(x => !x._2 && x._3).map(_._1)
-    val positiveAndNegative = checkedWithDictionaries.filter(x => x._2 && x._3).map(_._1)
-    val neutral = checkedWithDictionaries.filter(x => !x._2 && !x._3).map(_._1)
+    val positiveUnique = sentimented.filter(x => x._2 && !x._3).map(_._1)
+    val negativeUnique = sentimented.filter(x => !x._2 && x._3).map(_._1)
+    val positiveAndNegative = sentimented.filter(x => x._2 && x._3).map(_._1)
+    val neutral = sentimented.filter(x => !x._2 && !x._3).map(_._1)
 
     AnalyzedReview(review = review,
       positiveWords = positiveUnique,

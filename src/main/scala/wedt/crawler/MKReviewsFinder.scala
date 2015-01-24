@@ -62,55 +62,30 @@ class MKReviewsFinder(val parentsDepth: Int) extends ReviewsFinder with StrictLo
   }
 
   def cutOutContextualSuffix(group: Seq[String]): Seq[String] = {
-    val minFreq = 0.3;
-    val minLen = 3
-
-    var off = 3
-    var continue = true
-    def groupBySuffix(t: String): String = if(off > t.length) t else t.substring(t.length - off)
-    do {
-      val groupsBySuffix = group.groupBy(groupBySuffix).filter(_._1.length >= off)
-      if(groupsBySuffix.isEmpty)
-        continue = false
-      else {
-        val groupWithContext = groupsBySuffix.maxBy(_._2.length)._2
-        continue = groupWithContext.length >= minFreq * group.length
-        off = off + 1
-      }
-    } while(continue)
-    off = off - 2
-
-    if(off > minLen) {
-      val groupWithContext = group.groupBy(groupBySuffix).filter(_._1.length >= off).maxBy(_._2.length)._2
-      val suffix = groupWithContext.head.substring(groupWithContext.head.length - off)
-      group.map(t => if(t.endsWith(suffix)) t.substring(0, t.length - suffix.length) else t)
-    }
-    else group
+    def cut(t: String, off:  Int) = t.substring(t.length - off)
+    def map(t: String, contextual:  String) = if(t.endsWith(contextual)) t.substring(0, t.length - contextual.length) else t
+    cutOutContextual(cut, map)(group)
   }
 
   def cutOutContextualPrefix(group: Seq[String]): Seq[String] = {
-    val minFreq = 0.3
+    def cut(t: String, off:  Int) = t.substring(0, off)
+    def map(t: String, contextual:  String) = if(t.startsWith(contextual)) t.substring(contextual.length) else t
+    cutOutContextual(cut, map)(group)
+  }
+
+  def cutOutContextual(cut: (String, Int) => String, map: (String, String) => String)(group: Seq[String]): Seq[String] = {
+    val minCount = 0.5 * group.length
     val minLen = 3
+    var off = minLen
 
-    var off = 3
-    var continue = true
-    def groupByPrefix(t: String): String = if(off > t.length) t else t.substring(0, off)
-    do {
-      val groupsByPrefix = group.groupBy(groupByPrefix).filter(_._1.length >= off)
-      if(groupsByPrefix.isEmpty)
-        continue = false
-      else {
-        val groupWithContext = groupsByPrefix.maxBy(_._2.length)._2
-        continue = groupWithContext.length >= minFreq * group.length
-        off = off + 1
-      }
-    } while(continue)
-    off = off - 2
+    def groupBy(t: String): String = if(off > t.length) t else cut(t, off)
+    def groupWithContext(off: Int): Seq[String] = group.groupBy(groupBy).filter(_._1.length >= off).foldLeft(Seq[String]())((m,x) => if(m.length > x._2.length) m else x._2)
+    while(groupWithContext(off).length >= minCount) off = off + 1
+    off = off - 1
 
-    if(off > minLen) {
-      val groupWithContext = group.groupBy(groupByPrefix).filter(_._1.length >= off).maxBy(_._2.length)._2
-      val prefix = groupWithContext(0).substring(0, off)
-      group.map(t => if(t.startsWith(prefix)) t.substring(prefix.length) else t)
+    if(off >= minLen) {
+      val contextual = cut(groupWithContext(off)(0), off)
+      group.map(t => map(t, contextual))
     }
     else group
   }
