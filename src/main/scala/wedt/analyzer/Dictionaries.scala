@@ -19,7 +19,6 @@ object Dictionaries {
   def loadDictionaries(language: SupportedLanguages.Value): Words = {
     val positiveWords = scala.io.Source.fromURL(getClass.getResource(s"/dict-positive-${language.toString}"), "UTF-8").getLines().toSet
     val negativeWords = scala.io.Source.fromURL(getClass.getResource(s"/dict-negative-${language.toString}"), "UTF-8").getLines().toSet
-    //val stopWords = scala.io.Source.fromURL(getClass.getResource(s"/stop-words-${language.toString}"), "UTF-8").getLines().toSet
 
     Words(positiveWords, negativeWords, language)
   }
@@ -108,11 +107,6 @@ object TextAnalyzer {
 
   def englishAnalyzer = new EnglishAnalyzer
 
-  //  def apply(stopWords: Set[String]): TextAnalyzer = {
-  //
-  //    val stopwordsSet = new CharArraySet(stopWords, true)
-  //    new TextAnalyzer(stopwordsSet)
-  //  }
 
   def getTokens(textToAnalyze: String, analyzer: Analyzer): Seq[String] = {
     val stream = analyzer.tokenStream("field", new StringReader(textToAnalyze))

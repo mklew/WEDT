@@ -1,13 +1,6 @@
 package wedt.analyzer
 
-import java.io.{StringReader, Reader}
-
-import org.apache.lucene.analysis.tokenattributes.CharTermAttribute
-import org.apache.lucene.analysis.util.{CharArraySet, StopwordAnalyzerBase}
-import org.apache.lucene.analysis.{Tokenizer, Analyzer}
-import org.apache.lucene.analysis.en.{EnglishAnalyzer, PorterStemFilter}
 import wedt.crawler.SupportedLanguages
-import scala.collection.JavaConversions._
 
 /**
  * @author Marek Lewandowski <marek.lewandowski@semantive.com>
@@ -16,8 +9,11 @@ import scala.collection.JavaConversions._
 object SentimentAnalyzer {
 
   private def doAnalyze(review: String, total: Int, dictionaries: StemmedWords, stemmedReview: scala.Seq[String]) = {
+    def isNegation(w: String) = w == "nie" || w == "not"
+
     val checked = stemmedReview.map(stem => (stem, dictionaries.positive.contains(stem), dictionaries.negative.contains(stem)))
-    val sentimented = checked.zipWithIndex.map{case (w, i) => if((i > 1 && checked(i-2)._1=="nie") || (i > 0 && checked(i-1)._1=="nie")) (w._1, false, false) else w} // nie correct
+    val sentimented = checked.zipWithIndex.map {case (w, i) => if((i > 1 && isNegation(checked(i-2)._1) ) ||
+      (i > 0 && isNegation(checked(i-1)._1))) (w._1, false, false) else w} // negation
 
     val positiveUnique = sentimented.filter(x => x._2 && !x._3).map(_._1)
     val negativeUnique = sentimented.filter(x => !x._2 && x._3).map(_._1)
@@ -100,20 +96,3 @@ case class AnalyzedReviewSimple(review: String, positive: Int, negative: Int, am
 
 case class AnalyzedReviewWithSentiment(sentiment: Double, analyzed: AnalyzedReview)
 
-
-//class MyAnalyzer extends Analyzer {
-//  override def createComponents(fieldName: String, reader: Reader): TokenStreamComponents = {
-//
-//  val source: Tokenizer = new LowerCaseTokenizer(reader);
-//  new TokenStreamComponents(source, new PorterStemFilter(source))
-//}
-//}
-
-
-//
-//class TextAnalyzer(stopWords: CharArraySet) extends EnglishAnalyzer {
-//  override def createComponents(fieldName: String, reader: Reader): TokenStreamComponents = {
-//    val source: Tokenizer = new LowerCaseTokenizer(reader)
-//    new TokenStreamComponents(source, new PorterStemFilter(source))
-//  }
-//}
